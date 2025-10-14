@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block content %}
+    Found <strong>{{ found_counter }}</strong> results...
+    <hr>
+    {% if rag_response %}
+        <div class="mb-4 p-3" style="border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9;">
+            <h5>AI-Generated Summary:</h5>
+            <p>{{ rag_response }}</p>
+        </div>
+    {% endif %}
+    <hr>
+    {% for item in results_list %}
+        <div class="pb-3">
+            <div class="doc-title">
+                <a href="{{ item.url }}">{{ item.title }}...
+                </a>
+            </div>
+            <div class="doc-desc">
+                {{ item.doc_date }} — {{ item.description }}
+            </div>
+
+        </div>
+
+    {% endfor %}
+{% endblock %}
+

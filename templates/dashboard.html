@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block header %}
+    <!-- Next tag loads Charts.js https://www.chartjs.org/docs/latest/ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.6.2/chart.min.js"
+            integrity="sha512-tMabqarPtykgDtdtSqCL3uLVM0gS1ZkUAVhRFu1vSEFgvB73niFQWJuvviDyBGBH22Lcau4rHB5p2K2T0Xvr6Q=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+{% endblock %}
+
+{% block content %}
+
+    <!--
+    Examples of what to show in Dashboard:
+
+    - Ranking of visited documents (from results page)
+    - Visitor's preferred browsers
+    - Visitor's city (from IP)
+    - preferred queries ranking
+    - preferred terms
+    - etc.
+
+    -->
+
+    <h3>Dashboard</h3>
+    <iframe src="/plot_number_of_views" width="600" height="400" style="border: none;"></iframe>
+
+
+{% endblock %}
+
+
