@@ -87,13 +87,13 @@ def search_form_post():
 
     return render_template('results.html', results_list=results, page_title="Results", found_counter=found_count, rag_response=rag_response)
 
-
+"""
 @app.route('/doc_details', methods=['GET'])
 def doc_details():
-    """
+    """"""
     Show document details page
     ### Replace with your custom logic ###
-    """
+    """"""
 
     # getting request parameters:
     # user = request.args.get('user')
@@ -115,8 +115,47 @@ def doc_details():
 
     print("fact_clicks count for id={} is {}".format(clicked_doc_id, analytics_data.fact_clicks[clicked_doc_id]))
     print(analytics_data.fact_clicks)
-    return render_template('doc_details.html')
+    return render_template('doc_details.html')"""
+@app.route('/doc_details', methods=['GET'])
+def doc_details():
+    """
+    Show document details page
+    """
 
+    print("doc details session: ")
+    print(session)
+
+    # (això ja ho tenies, si no el fas servir el pots treure)
+    if "some_var" in session:
+        res = session["some_var"]
+        print("recovered var from session:", res)
+
+    # 1. Recuperar el pid del document clicat
+    clicked_doc_id = request.args["pid"]
+    print(f"click in id={clicked_doc_id}")
+
+    # 2. Actualitzar estadístiques de clics
+    if clicked_doc_id in analytics_data.fact_clicks.keys():
+        analytics_data.fact_clicks[clicked_doc_id] += 1
+    else:
+        analytics_data.fact_clicks[clicked_doc_id] = 1
+
+    print(
+        "fact_clicks count for id={} is {}".format(
+            clicked_doc_id, analytics_data.fact_clicks[clicked_doc_id]
+        )
+    )
+    print(analytics_data.fact_clicks)
+
+    # 3. 🔴 AIXÒ ÉS EL QUE ET FALTAVA: agafar el Document del corpus
+    doc = corpus[clicked_doc_id]
+
+    # 4. Passar el document al template
+    return render_template(
+        'doc_details.html',
+        doc=doc,
+        page_title="Document details"
+    )
 
 @app.route('/stats', methods=['GET'])
 def stats():
