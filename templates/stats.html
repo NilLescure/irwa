@@ -1,15 +1,95 @@
 {% extends "base.html" %}
 {% block page_title %}{{ page_title }}{% endblock %}
-{% block content %}
-    <h2>Quick Stats</h2>
-    <h4>Clicked docs:</h4>
 
-    {% for doc in clicks_data %}
-        <div class="pb-3">
-            <div class="">
-                <span class="text-dark"> ({{ doc.count }} visits) </span> — id: {{ doc.pid }} — {{ doc.title }} - {{ doc.description }}
-            </div>
-        </div>
-        <hr>
+{% block content %}
+<h1>{{ page_title }}</h1>
+
+<h2>1. Document Clicks & Dwell Time</h2>
+<table border="1" cellpadding="5">
+    <tr>
+        <th>Document ID</th>
+        <th>Clicks</th>
+        <th>Related Queries</th>
+        <th>Dwell Times (s)</th>
+        <th>Average Dwell Time (s)</th>
+    </tr>
+    {% for d in document_stats %}
+    <tr>
+        <td>{{ d.doc_id }}</td>
+        <td>{{ d.clicks }}</td>
+        <td>{{ d.related_queries }}</td>
+        <td>{{ d.dwell_times }}</td>
+        <td>{{ d.avg_dwell_time|round(2) }}</td>
+    </tr>
     {% endfor %}
+</table>
+
+<hr>
+
+<h2>2. Queries</h2>
+<table border="1" cellpadding="5">
+    <tr>
+        <th>Query ID</th>
+        <th>Session ID</th>
+        <th>Query Text</th>
+        <th>Terms</th>
+        <th>#Terms</th>
+        <th>Timestamp</th>
+    </tr>
+    {% for q in query_stats.queries %}
+    <tr>
+        <td>{{ q.id }}</td>
+        <td>{{ q.session_id }}</td>
+        <td>{{ q.query }}</td>
+        <td>{{ q.terms }}</td>
+        <td>{{ q.num_terms }}</td>
+        <td>{{ q.timestamp }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<hr>
+
+<h2>3. HTTP Requests</h2>
+<table border="1" cellpadding="5">
+    <tr>
+        <th>Session ID</th>
+        <th>Path</th>
+        <th>Method</th>
+        <th>IP</th>
+        <th>User Agent</th>
+        <th>Timestamp</th>
+    </tr>
+    {% for r in http_stats.requests %}
+    <tr>
+        <td>{{ r.session_id }}</td>
+        <td>{{ r.path }}</td>
+        <td>{{ r.method }}</td>
+        <td>{{ r.ip }}</td>
+        <td>{{ r.user_agent }}</td>
+        <td>{{ r.timestamp }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<hr>
+
+<h2>4. Sessions</h2>
+<table border="1" cellpadding="5">
+    <tr>
+        <th>Session ID</th>
+        <th>Start Time</th>
+        <th># Requests</th>
+        <th># Queries</th>
+    </tr>
+    {% for s_id, s in http_stats.sessions.items() %}
+    <tr>
+        <td>{{ s_id }}</td>
+        <td>{{ s.start }}</td>
+        <td>{{ s.num_requests }}</td>
+        <td>{{ s.num_queries }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
 {% endblock %}
