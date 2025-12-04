@@ -105,7 +105,7 @@
                 {% if doc.actual_price %}
                     {% set original_price = (doc.actual_price / 100) %}
                     <p>
-                        <span class="text-decoration-line-through text-muted">
+                        <span class="text-decoration-line-through text-muted" style="text-decoration:line-through;">
                             {{ "%.2f"|format(original_price) }} €
                         </span>
 

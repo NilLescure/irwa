@@ -86,7 +86,7 @@
                     <div style="font-size:1rem; margin-bottom:3px;">
                         {% if item.selling_price is not none %}
                             {% set sp = '%.2f' % (item.selling_price / 100) %}
-                            <span style="color:#d32f2f; font-weight:700; font-size:1.15rem;">
+                            <span style="color:#2e7d32; font-weight:700; font-size:1.15rem;">
                                 {{ sp }} €
                             </span>
                         {% endif %}
@@ -99,7 +99,7 @@
                         {% endif %}
 
                         {% if item.discount %}
-                            <span style="color:#2e7d32; font-weight:700; margin-left:8px;">
+                            <span style="color:#d32f2f; font-weight:700; margin-left:8px;">
                                 -{{ item.discount }}%
                             </span>
                         {% endif %}

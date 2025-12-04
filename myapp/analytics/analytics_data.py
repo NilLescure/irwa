@@ -2,8 +2,8 @@ import json
 import random
 import altair as alt
 import pandas as pd
-import geoip2.database  # pip install geoip2
 import requests
+from myapp.search.algorithms import _tokenize
 
 
 class AnalyticsData:
@@ -111,36 +111,101 @@ class AnalyticsData:
         return session_id
 
     def assign_mission(self, session_id: str, query: str):
+        """
+        Assigna un mission_id fent servir similitud cosinus i els mateixos tokens
+        preprocessats que el motor de cerca (_tokenize / preproces_text).
+        """
+        import math
+        import pandas as pd
+        import uuid
+        from myapp.search.algorithms import _tokenize   # ⚠️ ajusta el path si cal
+
         session = self.fact_sessions.get(session_id)
         if not session:
             return None
 
-        last_mission_id = None
-        last_queries = [q for q in self.fact_queries if q["session_id"] == session_id]
-        if last_queries:
-            last_mission_id = last_queries[-1].get("mission_id")
-            last_query_text = last_queries[-1]["query"]
-            # Simple heuristic: if 50% words overlap, same mission
-            words_query = set(query.lower().split())
-            words_last = set(last_query_text.lower().split())
-            overlap = len(words_query & words_last) / max(1, len(words_query | words_last))
-            if overlap < 0.5:
-                last_mission_id = None  # start new mission
+        # -------------------------------
+        # Helpers per TF i cosinus 
+        # -------------------------------
+        def build_tf(tokens):
+            tf = {}
+            for t in tokens:
+                tf[t] = tf.get(t, 0) + 1
+            return tf
 
-        if last_mission_id is None:
-            import uuid
+        def cosine_sim(tf1, tf2):
+            if not tf1 or not tf2:
+                return 0.0
+            common = set(tf1.keys()) & set(tf2.keys())
+            num = sum(tf1[t] * tf2[t] for t in common)
+            den1 = math.sqrt(sum(v * v for v in tf1.values()))
+            den2 = math.sqrt(sum(v * v for v in tf2.values()))
+            if den1 == 0 or den2 == 0:
+                return 0.0
+            return num / (den1 * den2)
+
+        # -------------------------------
+        # Preprocess de la query actual
+        # -------------------------------
+        now = pd.Timestamp.now()
+        current_tokens = _tokenize(query)
+        current_tf = build_tf(current_tokens)
+
+        # -------------------------------
+        # Paràmetres del model
+        # -------------------------------
+        TIME_WINDOW_SECONDS = 2 * 60 * 60      # 2 hores
+        SIM_THRESHOLD = 0.35                   # llindar de similitud cosinus
+
+        # -------------------------------
+        # Busquem queries antigues amb missió
+        # -------------------------------
+        previous_queries = [
+            q for q in self.fact_queries
+            if q["session_id"] == session_id and "mission_id" in q
+        ]
+
+        best_sim = 0.0
+        best_mission_id = None
+
+        for q in previous_queries:
+            # Finestra temporal
+            if (now - q["timestamp"]).total_seconds() > TIME_WINDOW_SECONDS:
+                continue
+
+            prev_tokens = _tokenize(q["query"])
+            prev_tf = build_tf(prev_tokens)
+            sim = cosine_sim(current_tf, prev_tf)
+
+            if sim > best_sim:
+                best_sim = sim
+                best_mission_id = q["mission_id"]
+
+        # -------------------------------
+        # Decisió: nova missió o mateixa?
+        # -------------------------------
+        if best_mission_id is None or best_sim < SIM_THRESHOLD:
             mission_id = str(uuid.uuid4())
         else:
-            mission_id = last_mission_id
+            mission_id = best_mission_id
 
-        # Save query with mission ID
+        # -------------------------------
+        # Guardar la query
+        # -------------------------------
         event = self.save_query(session_id, query)
         event["mission_id"] = mission_id
 
-        # Add mission to session
-        session["missions"].append(mission_id)
+        # -------------------------------
+        # Afegir missió a la sessió (sense duplicats)
+        # -------------------------------
+        if "missions" not in session:
+            session["missions"] = []
+
+        if mission_id not in session["missions"]:
+            session["missions"].append(mission_id)
 
         return mission_id
+
 
 
 
@@ -299,22 +364,37 @@ class AnalyticsData:
     # ------------------- QUERY STATS -------------------
     def get_query_stats(self):
         """
-        Returns all queries stored in analytics.
+        Retorna estadístiques de les queries.
+
+        - Agrupa per text de query.
+        - Per a cada query: nombre de cops que s'ha fet ('count') i num_terms.
         """
-        # Optionally, assign an id to each query if not present
-        queries_with_id = []
-        for idx, q in enumerate(self.fact_queries):
-            q_copy = q.copy()
-            if "id" not in q_copy:
-                q_copy["id"] = idx + 1
-            queries_with_id.append(q_copy)
+        aggregated = {}  # text_query -> dict
+
+        for q in self.fact_queries:
+            text = q["query"]
+            if text not in aggregated:
+                aggregated[text] = {
+                    "query": text,
+                    "num_terms": q.get("num_terms", len(q.get("terms", []))),
+                    "count": 1,
+                }
+            else:
+                aggregated[text]["count"] += 1
+
+        queries_list = list(aggregated.values())
+
+        # Map query -> llista de doc_ids retornats (última versió)
+        query_results_map = {}
+        for q_text in aggregated.keys():
+            query_results_map[q_text] = [
+                r["doc_id"] for r in self.fact_results if r["query"] == q_text
+            ]
+
         return {
             "total_queries": len(self.fact_queries),
-            "queries": queries_with_id,
-            "query_results": {
-                log["query"]: [r["doc_id"] for r in self.fact_results if r["query"] == log["query"]]
-                for log in self.fact_queries
-            }
+            "queries": queries_list,
+            "query_results": query_results_map,
         }
 
 

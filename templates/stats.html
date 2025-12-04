@@ -5,15 +5,129 @@
     <!-- Navigation -->
     <div class="mb-3">
         <a href="/">Home</a> |
-        <a href="/stats">Stats</a>
+        <a href="/dashboard">Dashboard</a>
         {% if session.last_search_query %}
-            | <a href="{{ url_for('last_search') }}">Previous search</a>
+            | <a href="{{ url_for('last_search') }}">Previous results</a>
         {% endif %}
     </div>
 
 <h1>{{ page_title }}</h1>
 
-<h2>1. Document Clicks & Dwell Time</h2>
+<style>
+  /* Contenidor amb scroll i espai limitat per les taules llargues */
+  .scroll-table-wrapper {
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      margin-top: 8px;
+      background: #ffffff;
+  }
+
+  .scroll-table-wrapper table {
+      width: 100%;
+      border-collapse: collapse;
+  }
+
+  .scroll-table-wrapper th,
+  .scroll-table-wrapper td {
+      font-size: 0.9rem;
+  }
+
+  /* Estil per a les "ruletes" amb <details> */
+  details {
+      margin: 8px 0 24px 0;
+  }
+
+  details > summary {
+      cursor: pointer;
+      padding: 6px 10px;
+      background: #f3f4f6;
+      border-radius: 8px;
+      font-weight: 600;
+      list-style: none;
+  }
+
+  details > summary::-webkit-details-marker {
+      display: none;
+  }
+
+  details[open] > summary {
+      background: #e5e7eb;
+  }
+</style>
+
+<!-- 0. Global Summary -->
+<h2>0. Global Summary</h2>
+<div style="display:flex; flex-wrap:wrap; gap:15px; margin-bottom:25px;">
+    <div style="flex:1 1 200px; background:#f0f4f8; padding:10px; border-radius:8px;">
+        <strong>Total queries</strong>
+        <div>{{ summary.total_queries }}</div>
+        <small>Unique queries: {{ summary.unique_queries }}</small>
+    </div>
+    <div style="flex:1 1 200px; background:#f0f4f8; padding:10px; border-radius:8px;">
+        <strong>Document clicks</strong>
+        <div>{{ summary.total_clicks }}</div>
+        <small>Docs with clicks: {{ summary.total_docs_clicked }}</small>
+    </div>
+    <div style="flex:1 1 200px; background:#f0f4f8; padding:10px; border-radius:8px;">
+        <strong>Dwell events</strong>
+        <div>{{ summary.total_dwell_events }}</div>
+        <small>Avg dwell: {{ summary.avg_dwell_time|round(2) }} s</small>
+    </div>
+    <div style="flex:1 1 200px; background:#f0f4f8; padding:10px; border-radius:8px;">
+        <strong>Sessions</strong>
+        <div>{{ summary.total_sessions }}</div>
+        <small>Total HTTP requests: {{ summary.total_requests }}</small>
+    </div>
+    <div style="flex:1 1 200px; background:#f0f4f8; padding:10px; border-radius:8px;">
+        <strong>Missions</strong>
+        <div>{{ mission_stats.summary.total_missions }}</div>
+        <small>Avg queries/mission: {{ mission_stats.summary.avg_queries_per_mission|round(2) }}</small>
+    </div>
+</div>
+
+<hr>
+
+<!-- 1. Missions -->
+<h2>1. Missions (Query sessions)</h2>
+{% if mission_stats.missions %}
+<table border="1" cellpadding="5">
+    <tr>
+        <th>Mission ID</th>
+        <th>Session ID</th>
+        <th>#Queries</th>
+        <th>#Unique Queries</th>
+        <th>Start</th>
+        <th>End</th>
+        <th>Duration (s)</th>
+        <th>Queries (ordered)</th>
+    </tr>
+    {% for m in mission_stats.missions %}
+    <tr>
+        <td style="max-width:250px; word-break:break-all;">{{ m.mission_id }}</td>
+        <td>{{ m.session_id }}</td>
+        <td>{{ m.num_queries }}</td>
+        <td>{{ m.unique_queries }}</td>
+        <td>{{ m.start }}</td>
+        <td>{{ m.end }}</td>
+        <td>{{ m.duration_seconds|round(1) }}</td>
+        <td>
+            {% for q in m.queries %}
+                <span>{{ q }}</span>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No missions detected yet.</p>
+{% endif %}
+
+<hr>
+
+<!-- 2. Document Clicks & Dwell Time -->
+<h2>2. Document Clicks & Dwell Time</h2>
 <table border="1" cellpadding="5">
     <tr>
         <th>Document ID</th>
@@ -26,8 +140,16 @@
     <tr>
         <td>{{ d.doc_id }}</td>
         <td>{{ d.clicks }}</td>
-        <td>{{ d.related_queries }}</td>
-        <td>{{ d.dwell_times }}</td>
+        <td>
+            {% for q in d.related_queries %}
+                <span>{{ q }}</span>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+        </td>
+        <td>
+            {% for t in d.dwell_times %}
+                {{ t|round(2) }}{% if not loop.last %}, {% endif %}
+            {% endfor %}
+        </td>
         <td>{{ d.avg_dwell_time|round(2) }}</td>
     </tr>
     {% endfor %}
@@ -35,22 +157,58 @@
 
 <hr>
 
-<h2>2. Queries</h2>
+<!-- 3. Aggregated Queries (by text) amb ruleta + scroll -->
+<h2>3. Aggregated Queries (by text)</h2>
+<details>
+    <summary>Show/hide aggregated queries table</summary>
+    <div class="scroll-table-wrapper">
+        <table border="1" cellpadding="5">
+            <tr>
+                <th>Query Text</th>
+                <th>#Times Used</th>
+                <th>#Terms</th>
+                <th>Docs returned (anytime)</th>
+            </tr>
+            {% for q in query_stats.queries %}
+            <tr>
+                <td>{{ q.query }}</td>
+                <td>{{ q.count if q.count is defined else 1 }}</td>
+                <td>{{ q.num_terms if q.num_terms is defined else '-' }}</td>
+                <td>
+                    {% set docs = query_stats.query_results[q.query] if query_stats.query_results and q.query in query_stats.query_results else [] %}
+                    {% if docs %}
+                        {% for d_id in docs %}
+                            {{ d_id }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</details>
+
+<hr>
+
+<!-- 4. Raw Queries Log (segueix igual, info completa sempre visible) -->
+<h2>4. Raw Queries Log</h2>
 <table border="1" cellpadding="5">
     <tr>
-        <th>Query ID</th>
+        <th>#</th>
         <th>Session ID</th>
+        <th>Mission ID</th>
         <th>Query Text</th>
-        <th>Terms</th>
         <th>#Terms</th>
         <th>Timestamp</th>
     </tr>
-    {% for q in query_stats.queries %}
+    {% for q in raw_queries %}
     <tr>
-        <td>{{ q.id }}</td>
+        <td>{{ loop.index }}</td>
         <td>{{ q.session_id }}</td>
+        <td>{{ q.mission_id if q.mission_id is defined else '-' }}</td>
         <td>{{ q.query }}</td>
-        <td>{{ q.terms }}</td>
         <td>{{ q.num_terms }}</td>
         <td>{{ q.timestamp }}</td>
     </tr>
@@ -59,37 +217,64 @@
 
 <hr>
 
-<h2>3. HTTP Requests</h2>
-<table border="1" cellpadding="5">
-    <tr>
-        <th>Session ID</th>
-        <th>Path</th>
-        <th>Method</th>
-        <th>IP</th>
-        <th>User Agent</th>
-        <th>Timestamp</th>
-    </tr>
-    {% for r in http_stats.requests %}
-    <tr>
-        <td>{{ r.session_id }}</td>
-        <td>{{ r.path }}</td>
-        <td>{{ r.method }}</td>
-        <td>{{ r.ip }}</td>
-        <td>{{ r.user_agent }}</td>
-        <td>{{ r.timestamp }}</td>
-    </tr>
+<!-- 5. HTTP Requests -->
+<h2>5. HTTP Requests</h2>
+
+<h3>5.1 Methods summary</h3>
+<ul>
+    {% for method, count in http_stats.method_counts.items() %}
+        <li>{{ method }}: {{ count }}</li>
     {% endfor %}
-</table>
+    {% if http_stats.method_counts|length == 0 %}
+        <li>No HTTP requests logged yet.</li>
+    {% endif %}
+</ul>
+
+<h3>5.2 Requests log</h3>
+<details>
+    <summary>Show/hide HTTP request log</summary>
+    <div class="scroll-table-wrapper">
+        <table border="1" cellpadding="5">
+            <tr>
+                <th>Session ID</th>
+                <th>Path</th>
+                <th>Method</th>
+                <th>IP</th>
+                <th>City</th>
+                <th>Country</th>
+                <th>User Agent</th>
+                <th>Timestamp</th>
+            </tr>
+            {% for r in http_stats.requests %}
+            <tr>
+                <td>{{ r.session_id }}</td>
+                <td>{{ r.path }}</td>
+                <td>{{ r.method }}</td>
+                <td>{{ r.ip }}</td>
+                <td>{{ r.city }}</td>
+                <td>{{ r.country }}</td>
+                <td>{{ r.user_agent }}</td>
+                <td>{{ r.timestamp }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</details>
 
 <hr>
 
-<h2>4. Sessions</h2>
+<!-- 6. Sessions -->
+<h2>6. Sessions</h2>
 <table border="1" cellpadding="5">
     <tr>
         <th>Session ID</th>
         <th>Start Time</th>
         <th># Requests</th>
         <th># Queries</th>
+        <th>City</th>
+        <th>Country</th>
+        <th># Missions (IDs)</th>
+        <th>Missions</th>
     </tr>
     {% for s_id, s in http_stats.sessions.items() %}
     <tr>
@@ -97,6 +282,24 @@
         <td>{{ s.start }}</td>
         <td>{{ s.num_requests }}</td>
         <td>{{ s.num_queries }}</td>
+        <td>{{ s.city if s.city is defined else '-' }}</td>
+        <td>{{ s.country if s.country is defined else '-' }}</td>
+        <td>
+            {% if s.missions is defined %}
+                {{ s.missions|length }}
+            {% else %}
+                0
+            {% endif %}
+        </td>
+        <td>
+            {% if s.missions is defined and s.missions %}
+                {% for mid in s.missions %}
+                    {{ mid }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
+            {% else %}
+                -
+            {% endif %}
+        </td>
     </tr>
     {% endfor %}
 </table>

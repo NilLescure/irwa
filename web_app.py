@@ -11,6 +11,8 @@ from myapp.search.objects import Document, StatsDocument
 from myapp.search.search_engine import SearchEngine
 from myapp.generation.rag import RAGGenerator
 from dotenv import load_dotenv
+from collections import Counter
+
 load_dotenv()  # take environment variables from .env
 
 import math
@@ -99,24 +101,21 @@ def search_form_post():
     # Compute dwell time for last clicked doc
     analytics_data.compute_dwell(session_id)
 
-    # 1️ Save query
-    query_event = analytics_data.save_query(session_id, search_query)
-
-    # 2️ Assign mission
+       # 1️ Assignem missió (la funció ja guarda la query internament)
     mission_id = analytics_data.assign_mission(session_id, search_query)
 
-    # Add mission to session info
-    if "missions" not in analytics_data.fact_sessions[session_id]:
-        analytics_data.fact_sessions[session_id]["missions"] = []
-    analytics_data.fact_sessions[session_id]["missions"].append(mission_id)
+    # Id simple per a la query (última afegida a fact_queries)
+    query_id = len(analytics_data.fact_queries)
 
+    # Guardem a sessió la info de l'última cerca
     session['last_search_query'] = search_query
     session['last_mission_id'] = mission_id
     session['last_search_page'] = page
 
 
     # 3️ Perform search (llista completa de resultats)
-    results = search_engine.search(search_query, query_event.get("id"), corpus)
+    results = search_engine.search(search_query, query_id, corpus)
+
 
     # 4️ Save results ranking
     results_with_rank = [(doc.pid, idx + 1) for idx, doc in enumerate(results)]
@@ -202,22 +201,19 @@ def last_search():
     # Compute dwell time per l'últim doc vist
     analytics_data.compute_dwell(session_id)
 
-    # 1️ Guardem una nova entrada de query (es pot interpretar com repetir la cerca)
-    query_event = analytics_data.save_query(session_id, search_query)
-
-    # 2️ Assignem missió
+    # 1️ Assignem missió (ja guarda la query)
     mission_id = analytics_data.assign_mission(session_id, search_query)
 
-    if "missions" not in analytics_data.fact_sessions[session_id]:
-        analytics_data.fact_sessions[session_id]["missions"] = []
-    analytics_data.fact_sessions[session_id]["missions"].append(mission_id)
+    # Id simple de la query (última guardada)
+    query_id = len(analytics_data.fact_queries)
 
     session['last_search_query'] = search_query
     session['last_mission_id'] = mission_id
     session['last_search_page'] = page
 
+
     # 3️ Tornem a fer la cerca
-    results = search_engine.search(search_query, query_event.get("id"), corpus)
+    results = search_engine.search(search_query, query_id, corpus)
 
     # 4️ Guardem el rànquing
     results_with_rank = [(doc.pid, idx + 1) for idx, doc in enumerate(results)]
@@ -316,24 +312,106 @@ def doc_details():
 @app.route('/stats', methods=['GET'])
 def stats():
     """
-    Show full analytics: document clicks, dwell times, queries, HTTP, sessions
+    Show full analytics: document clicks, dwell times, queries, HTTP, sessions, missions
     """
-    session_id = session["session_id"]
-    analytics_data.compute_dwell(session_id)
+    session_id = session.get("session_id")
+    if session_id:
+        analytics_data.compute_dwell(session_id)
 
+    # --- Dades base ---
     document_stats = analytics_data.get_document_stats()
     query_stats = analytics_data.get_query_stats()
+    raw_queries = analytics_data.fact_queries
+    http_requests = analytics_data.fact_http
+    sessions = analytics_data.fact_sessions
+    dwell_events = analytics_data.fact_dwell
+
+    # --- Summary global ---
+    total_clicks = sum(d["clicks"] for d in document_stats)
+    total_docs_clicked = len(document_stats)
+
+    total_dwell_events = len(dwell_events)
+    total_dwell_time = sum(e["dwell_time"] for e in dwell_events) if total_dwell_events else 0
+    avg_dwell_global = total_dwell_time / total_dwell_events if total_dwell_events else 0
+
+    total_queries = len(raw_queries)
+    unique_queries = len({q["query"] for q in raw_queries}) if raw_queries else 0
+
+    total_sessions = len(sessions)
+    total_requests = len(http_requests)
+
+    method_counts = Counter(r["method"] for r in http_requests) if http_requests else {}
+
+    summary = {
+        "total_clicks": total_clicks,
+        "total_docs_clicked": total_docs_clicked,
+        "total_dwell_events": total_dwell_events,
+        "total_dwell_time": total_dwell_time,
+        "avg_dwell_time": avg_dwell_global,
+        "total_queries": total_queries,
+        "unique_queries": unique_queries,
+        "total_sessions": total_sessions,
+        "total_requests": total_requests,
+    }
+
+    # --- Missions (derivades de les queries) ---
+    missions = {}
+    for q in raw_queries:
+        mission_id = q.get("mission_id")
+        if not mission_id:
+            continue
+
+        m = missions.setdefault(
+            mission_id,
+            {
+                "mission_id": mission_id,
+                "session_id": q["session_id"],
+                "queries": [],
+                "start": q["timestamp"],
+                "end": q["timestamp"],
+            },
+        )
+        m["queries"].append(q["query"])
+        if q["timestamp"] < m["start"]:
+            m["start"] = q["timestamp"]
+        if q["timestamp"] > m["end"]:
+            m["end"] = q["timestamp"]
+
+    for m in missions.values():
+        m["num_queries"] = len(m["queries"])
+        m["unique_queries"] = len(set(m["queries"]))
+        if m["start"] and m["end"]:
+            m["duration_seconds"] = (m["end"] - m["start"]).total_seconds()
+        else:
+            m["duration_seconds"] = 0
+
+    mission_list = sorted(missions.values(), key=lambda x: x["start"]) if missions else []
+
+    mission_summary = {
+        "total_missions": len(mission_list),
+        "avg_queries_per_mission": (
+            sum(m["num_queries"] for m in mission_list) / len(mission_list)
+        ) if mission_list else 0,
+    }
+
     http_stats = {
-        "requests": analytics_data.fact_http,
-        "sessions": analytics_data.fact_sessions
+        "requests": http_requests,
+        "sessions": sessions,
+        "method_counts": method_counts,
     }
 
     return render_template(
         'stats.html',
+        page_title="Analytics Overview",
         document_stats=document_stats,
         query_stats=query_stats,
+        raw_queries=raw_queries,
         http_stats=http_stats,
-        page_title="Analytics Overview"
+        summary=summary,
+        mission_stats={
+            "summary": mission_summary,
+            "missions": mission_list,
+        },
     )
 
 
@@ -342,31 +420,49 @@ def stats():
 def dashboard():
     session_id = session["session_id"]
     analytics_data.compute_dwell(session_id)
-    # Document stats
+
+    # Document stats (clicks, dwell, etc.)
     ranked_docs = analytics_data.get_document_stats()
+
+    # Afegim el title de cada document (a partir del corpus)
+    enhanced_docs = []
+    for d in ranked_docs:
+        doc_id = d["doc_id"]
+        doc_title = corpus[doc_id].title if doc_id in corpus else f"Document {doc_id}"
+        d_copy = d.copy()
+        d_copy["title"] = doc_title
+        enhanced_docs.append(d_copy)
 
     # Query stats
     query_stats = analytics_data.get_query_stats()
 
     # HTTP stats
     http_requests = analytics_data.fact_http or []
-
     sessions = analytics_data.fact_sessions or {}
 
-    # Extract user-agent safely
+    # Sessió actual (ubicació + missions)
+    current_session = sessions.get(session_id, {
+        "city": "Unknown",
+        "country": "Unknown",
+        "missions": []
+    })
+
+    # User-agents
     user_agents = [str(r.get("user_agent", "Unknown")) for r in analytics_data.fact_http]
 
     return render_template(
         "dashboard.html",
         page_title="Analytics Dashboard",
-        ranked_docs=ranked_docs,
+        ranked_docs=enhanced_docs,  # 👈 ara porta 'title'
         query_stats=query_stats,
         http_stats={
             "requests": analytics_data.fact_http,
             "sessions": sessions,
             "user_agents": user_agents,
         },
+        current_session=current_session,
     )
+
 
 
 
