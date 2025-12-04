@@ -4,7 +4,8 @@ import altair as alt
 import pandas as pd
 import requests
 from myapp.search.algorithms import _tokenize
-
+import math
+import uuid
 
 class AnalyticsData:
     """
@@ -18,31 +19,13 @@ class AnalyticsData:
     """
 
     def __init__(self):
-        # Clicks {doc_id: count}
         self.fact_clicks = {}
-
-        # Queries list of dicts
         self.fact_queries = []
-
-        # Results list of dicts
         self.fact_results = []
-
-        # Dwell time list of dicts
         self.fact_dwell = []
-
-        # HTTP logs
         self.fact_http = []
-
-        # Sessions
         self.fact_sessions = {}
-
-        # Track last click to compute dwell
         self.last_click = {}
-
-    # ----------------------------------------------------------------------
-    # ----------------------------- HTTP -----------------------------------
-    # ----------------------------------------------------------------------
-
 
     def get_location(self, ip: str):
         if ip.startswith("127.") or ip == "localhost":
@@ -80,22 +63,17 @@ class AnalyticsData:
                 "num_queries": 0,
                 "city": city,
                 "country": country,
-                "missions": [],  # initialize missions list
+                "missions": [],
             }
         self.fact_sessions[session_id]["num_requests"] += 1
 
-
-    
-    # ----------------------------------------------------------------------
-    # ----------------------------- Sessions -----------------------------------
-    # ----------------------------------------------------------------------
-    
+    # Sessions
     def update_physical_session(self, session_id: str):
         now = pd.Timestamp.now()
         session = self.fact_sessions.get(session_id)
         if session:
             last_time = session.get("last_activity", session["start"])
-            if (now - last_time).total_seconds() > 1800:  # 30 min timeout
+            if (now - last_time).total_seconds() > 1800:
                 # Create new session ID for this sit-down
                 import uuid
                 new_session_id = str(uuid.uuid4())
@@ -111,22 +89,11 @@ class AnalyticsData:
         return session_id
 
     def assign_mission(self, session_id: str, query: str):
-        """
-        Assigna un mission_id fent servir similitud cosinus i els mateixos tokens
-        preprocessats que el motor de cerca (_tokenize / preproces_text).
-        """
-        import math
-        import pandas as pd
-        import uuid
-        from myapp.search.algorithms import _tokenize   # ⚠️ ajusta el path si cal
-
         session = self.fact_sessions.get(session_id)
         if not session:
             return None
 
-        # -------------------------------
-        # Helpers per TF i cosinus 
-        # -------------------------------
+        # Helpers per TF i cosinus -
         def build_tf(tokens):
             tf = {}
             for t in tokens:
@@ -144,22 +111,14 @@ class AnalyticsData:
                 return 0.0
             return num / (den1 * den2)
 
-        # -------------------------------
-        # Preprocess de la query actual
-        # -------------------------------
+        # Preprocess the actual query
         now = pd.Timestamp.now()
         current_tokens = _tokenize(query)
         current_tf = build_tf(current_tokens)
 
-        # -------------------------------
-        # Paràmetres del model
-        # -------------------------------
-        TIME_WINDOW_SECONDS = 2 * 60 * 60      # 2 hores
-        SIM_THRESHOLD = 0.35                   # llindar de similitud cosinus
+        TIME_WINDOW_SECONDS = 2 * 60 * 60
+        SIM_THRESHOLD = 0.35
 
-        # -------------------------------
-        # Busquem queries antigues amb missió
-        # -------------------------------
         previous_queries = [
             q for q in self.fact_queries
             if q["session_id"] == session_id and "mission_id" in q
@@ -169,7 +128,6 @@ class AnalyticsData:
         best_mission_id = None
 
         for q in previous_queries:
-            # Finestra temporal
             if (now - q["timestamp"]).total_seconds() > TIME_WINDOW_SECONDS:
                 continue
 
@@ -181,23 +139,16 @@ class AnalyticsData:
                 best_sim = sim
                 best_mission_id = q["mission_id"]
 
-        # -------------------------------
-        # Decisió: nova missió o mateixa?
-        # -------------------------------
         if best_mission_id is None or best_sim < SIM_THRESHOLD:
             mission_id = str(uuid.uuid4())
         else:
             mission_id = best_mission_id
 
-        # -------------------------------
-        # Guardar la query
-        # -------------------------------
+
+        # Save query
         event = self.save_query(session_id, query)
         event["mission_id"] = mission_id
 
-        # -------------------------------
-        # Afegir missió a la sessió (sense duplicats)
-        # -------------------------------
         if "missions" not in session:
             session["missions"] = []
 
@@ -206,13 +157,7 @@ class AnalyticsData:
 
         return mission_id
 
-
-
-
-    # ----------------------------------------------------------------------
-    # ----------------------------- QUERIES --------------------------------
-    # ----------------------------------------------------------------------
-
+    # QUERIES
     def save_query(self, session_id: str, query: str):
         """
         Save query with metadata: terms, order, timestamp.
@@ -235,10 +180,7 @@ class AnalyticsData:
         self.fact_sessions[session_id]["num_queries"] += 1
         return event
 
-    # ----------------------------------------------------------------------
-    # ----------------------------- RESULTS --------------------------------
-    # ----------------------------------------------------------------------
-
+    # RESULTS
     def save_results(self, session_id: str, query: str, results):
         """
         Save ranked results returned for a query.
@@ -255,15 +197,11 @@ class AnalyticsData:
                 "timestamp": timestamp
             })
 
-    # ----------------------------------------------------------------------
-    # ---------------------- DOCUMENT CLICKS -------------------------------
-    # ----------------------------------------------------------------------
-
+    # DOCUMENT CLICKS
     def save_doc_click(self, session_id: str, doc_id: str, title: str, description: str):
         """
         Save a click on a document and start dwell timer.
         """
-
         # Update click counter
         if doc_id not in self.fact_clicks:
             self.fact_clicks[doc_id] = 0
@@ -282,10 +220,7 @@ class AnalyticsData:
 
         return event
 
-    # ----------------------------------------------------------------------
-    # --------------------------- DWELL TIME -------------------------------
-    # ----------------------------------------------------------------------
-
+    # DWELL TIME 
     def compute_dwell(self, session_id: str):
         """
         Called when returning to results page:
@@ -309,10 +244,7 @@ class AnalyticsData:
 
         return event
 
-    # ----------------------------------------------------------------------
-    # --------------------------- VISUALIZATIONS ----------------------------
-    # ----------------------------------------------------------------------
-
+    # VISUALIZATIONS 
     def plot_number_of_views(self):
         """Return HTML of a plot showing # of views per document."""
         data = [
@@ -334,7 +266,7 @@ class AnalyticsData:
 
         return chart.to_html()
 
-    # ------------------- DOCUMENT STATS -------------------
+    # DOCUMENT STATS
     def get_document_stats(self):
         """
         Returns a list of documents with clicks, related queries, dwell times, and average dwell.
@@ -361,15 +293,9 @@ class AnalyticsData:
         stats.sort(key=lambda x: x["clicks"], reverse=True)
         return stats
 
-    # ------------------- QUERY STATS -------------------
+    # QUERY STATS
     def get_query_stats(self):
-        """
-        Retorna estadístiques de les queries.
-
-        - Agrupa per text de query.
-        - Per a cada query: nombre de cops que s'ha fet ('count') i num_terms.
-        """
-        aggregated = {}  # text_query -> dict
+        aggregated = {}
 
         for q in self.fact_queries:
             text = q["query"]
@@ -384,7 +310,6 @@ class AnalyticsData:
 
         queries_list = list(aggregated.values())
 
-        # Map query -> llista de doc_ids retornats (última versió)
         query_results_map = {}
         for q_text in aggregated.keys():
             query_results_map[q_text] = [
@@ -396,10 +321,6 @@ class AnalyticsData:
             "queries": queries_list,
             "query_results": query_results_map,
         }
-
-
-
-    
 
 
 class ClickedDoc:

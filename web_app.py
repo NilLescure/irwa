@@ -44,7 +44,7 @@ path, filename = os.path.split(full_path)
 file_path = path + "/" + os.getenv("DATA_FILE_PATH")
 corpus = load_corpus(file_path)
 # Log first element of corpus to verify it loaded correctly:
-print("\nCorpus is loaded... \n First element:")#, list(corpus.values())[0])
+print("\nCorpus is loaded \n")#, list(corpus.values())[0])
 
 # Instantiate our search engine (creating the indexes with the corpus)
 search_engine = SearchEngine(corpus)
