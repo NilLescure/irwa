@@ -1,54 +1,196 @@
 {% extends "base.html" %}
+
 {% block page_title %}{{ page_title }}{% endblock %}
+
 {% block content %}
+
+    <!-- Navigation -->
+    <div class="mb-3">
+        <a href="/">Home</a> |
+        <a href="/stats">Stats</a> |
+        <a href="/dashboard">Dashboard</a>
+    </div>
+
+    <!-- Search bar on results page -->
+    <form method="POST" action="{{ url_for('search_form_post') }}" class="mb-4">
+        <div class="input-group">
+            <input
+                type="text"
+                name="search-query"
+                class="form-control"
+                placeholder="Search again..."
+                value="{{ search_query or '' }}"
+                required
+            >
+            <button class="btn btn-primary" type="submit">Search</button>
+        </div>
+    </form>
+
+    <hr>
+
     Found <strong>{{ found_counter }}</strong> results...
     <hr>
+
     {% if rag_response %}
         <div class="mb-4 p-3" style="border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9;">
             <h5>AI-Generated Summary:</h5>
             <p>{{ rag_response }}</p>
         </div>
     {% endif %}
+
     <hr>
-    {% for item in results_list %}
-        <div class="pb-3">
-            <!-- Títol enllaçat a la pàgina de detall -->
-            <div class="doc-title">
-                <a href="{{ item.url }}">
-                    {{ item.title }}
-                </a>
-            </div>
 
-            <!-- Descripció curta -->
-            <div class="doc-desc">
-                {{ item.description }}
-            </div>
+    {% if results_list %}
+        {% for item in results_list %}
 
-            <!-- Info de preu, descompte i rating -->
-            <div class="doc-meta text-muted mt-1">
-                {% if item.selling_price is not none %}
-                    <span><strong>Price:</strong> {{ item.selling_price }} €</span>
-                {% endif %}
-                {% if item.discount %}
-                    <span> | <strong>Discount:</strong> {{ item.discount }}%</span>
-                {% endif %}
-                {% if item.average_rating %}
-                    <span> | <strong>Rating:</strong> {{ item.average_rating }} / 5</span>
-                {% endif %}
-            </div>
+            <div class="row py-3">
 
-            <!-- Enllaç (addicional) a la pàgina original del producte, si el backend el passa -->
-            {% if item.product_url %}
-                <div class="mt-1">
-                    <a href="{{ item.product_url }}" target="_blank" rel="noopener">
-                        Open product page
+                <!-- Left column: product image -->
+                <div class="col-auto">
+                    <a href="{{ item.url }}" target="_blank">
+                        <img
+                            src="{{ item.images[0] if item.images }}"
+                            alt="{{ item.title }}"
+                            style="width:130px; height:130px; object-fit:cover; border-radius:8px; margin-right:22px;"
+                        >
                     </a>
                 </div>
-            {% endif %}
 
-        </div>
-        <hr>
-    {% endfor %}
+                <!-- Right column: product info -->
+                <div class="col">
+
+                    <!-- Title -->
+                    <h5 style="margin-bottom:4px;">
+                        <a href="{{ item.url }}" style="font-weight:600; text-decoration:none;">
+                            {{ item.title }}
+                        </a>
+                    </h5>
+
+                    <!-- Brand + Category -->
+                    <div class="text-muted mb-1" style="font-size:0.9rem;">
+                        {% if item.brand %}
+                            <strong>{{ item.brand }}</strong>
+                        {% endif %}
+                        {% if item.category %} · {{ item.category }}{% endif %}
+                        {% if item.sub_category %} → {{ item.sub_category }}{% endif %}
+                    </div>
+
+                    <!-- Description (truncada) -->
+                    <div class="text-muted mb-2" style="font-size:0.9rem;">
+                        {% if item.description %}
+                            {{ item.description | truncate(350, True, '...') }}
+                        {% endif %}
+                    </div>
+
+                    <!-- Pricing -->
+                    <div style="font-size:1rem; margin-bottom:3px;">
+                        {% if item.selling_price is not none %}
+                            {% set sp = '%.2f' % (item.selling_price / 100) %}
+                            <span style="color:#d32f2f; font-weight:700; font-size:1.15rem;">
+                                {{ sp }} €
+                            </span>
+                        {% endif %}
+
+                        {% if item.actual_price %}
+                            {% set ap = '%.2f' % (item.actual_price / 100) %}
+                            <span class="text-muted" style="text-decoration:line-through; margin-left:6px;">
+                                {{ ap }} €
+                            </span>
+                        {% endif %}
+
+                        {% if item.discount %}
+                            <span style="color:#2e7d32; font-weight:700; margin-left:8px;">
+                                -{{ item.discount }}%
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Rating & stock -->
+                    <div style="font-size:0.9rem; margin-bottom:3px;">
+                        {% if item.average_rating %}
+                            ⭐ {{ item.average_rating }}/5
+                        {% endif %}
+
+                        {% if item.out_of_stock %}
+                            <span style="color:#b71c1c; font-weight:700; margin-left:10px;">Out of stock</span>
+                        {% else %}
+                            <span style="color:#1b5e20; font-weight:700; margin-left:10px;">In stock</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Seller -->
+                    {% if item.seller %}
+                        <div class="text-muted" style="font-size:0.85rem; margin-bottom:4px;">
+                            Sold by: <strong>{{ item.seller }}</strong>
+                        </div>
+                    {% endif %}
+
+                    <!-- Details (truncats amb namespace) -->
+                    {% if item.product_details %}
+                        {% set ns = namespace(d='') %}
+                        {% for key, val in item.product_details.items() %}
+                            {% set ns.d = ns.d + key ~ ': ' ~ val ~ (', ' if not loop.last else '') %}
+                        {% endfor %}
+                        <div class="text-muted" style="font-size:0.85rem;">
+                            <strong>Details:</strong>
+                            {{ ns.d | truncate(260, True, '...') }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <hr>
+
+        {% endfor %}
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+            <form method="POST" action="{{ url_for('search_form_post') }}" class="mt-3">
+                <!-- mantenim la query a cada canvi de pàgina -->
+                <input type="hidden" name="search-query" value="{{ search_query }}">
+
+                <nav aria-label="Search results pages">
+                    <ul class="pagination justify-content-center">
+
+                        <!-- Previous -->
+                        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                            <button class="page-link" type="submit" name="page" value="{{ page - 1 }}" {% if page <= 1 %}disabled{% endif %}>
+                                Previous
+                            </button>
+                        </li>
+
+                        {# Pàgines visibles amb "..." entre salts #}
+                        {% set last_p = None %}
+                        {% for p in pages %}
+                            {% if last_p is not none and p - last_p > 1 %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">…</span>
+                                </li>
+                            {% endif %}
+
+                            <li class="page-item {% if p == page %}active{% endif %}">
+                                <button class="page-link" type="submit" name="page" value="{{ p }}">
+                                    {{ p }}
+                                </button>
+                            </li>
+
+                            {% set last_p = p %}
+                        {% endfor %}
+
+                        <!-- Next -->
+                        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                            <button class="page-link" type="submit" name="page" value="{{ page + 1 }}" {% if page >= total_pages %}disabled{% endif %}>
+                                Next
+                            </button>
+                        </li>
+
+                    </ul>
+                </nav>
+            </form>
+        {% endif %}
+
+    {% else %}
+        <p>No results found.</p>
+    {% endif %}
+
 {% endblock %}
-
-

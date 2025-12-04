@@ -1,168 +1,177 @@
-"""def search_in_corpus(query):
-    # 1. create create_tfidf_index
-    def create_index_tfidf(dataframe, clean_df, columns, num_documents):
-        index = defaultdict(list)
-        tf = defaultdict(list)
-        df = defaultdict(int)
-        title_index = defaultdict(str)
-        idf = defaultdict(float)
-
-        for index_val, row in dataframe.iterrows():
-            page_id = row['pid']
-            terms = []
-            for col in columns:
-                val = row[col]
-                trobat = re.findall(r"'([^']+)'", val)
-                terms.extend(trobat)
-
-            title = row['title']
-            title = clean_df.loc[clean_df['pid'] == page_id, 'title'].values[0]
-            title_index[page_id] = title
-
-            current_page_index = {}
-
-            for position, term in enumerate(terms):
-                try:
-                    current_page_index[term][1].append(position)
-                except:
-                    current_page_index[term] = [page_id, array('I', [position])]
-
-            norm = 0
-            for term, posting in current_page_index.items():
-                norm += len(posting[1]) ** 2
-            norm = math.sqrt(norm)
-
-            for term, posting in current_page_index.items():
-                tf[term].append(np.round(len(posting[1]) / norm, 4))
-                df[term] += 1
-
-            for term_page, posting_page in current_page_index.items():
-                index[term_page].append(posting_page)
-
-        for term in df:
-            idf[term] = np.round(np.log(float(num_documents / df[term])), 4)
-
-        return index, tf, df, idf, title_index
-    indexing_columns = ['title', 'description', 'brand', 'category', 'sub_category', 'product_details', 'seller']
-    index, tf, df, idf, title_index = create_index_tfidf(processed_df, clean_df, indexing_columns, len(processed_df))
-
-
-    # 2. apply ranking
-
-    return """
-# algorithms.py
-# myapp/search/algorithms.py
-
 import math
-import re
 from collections import defaultdict
-from typing import Dict, List
 
 from myapp.search.objects import Document
 
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer
+from nltk.tokenize import word_tokenize
 
-# --- Helpers ---------------------------------------------------------
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt")
 
-_token_re = re.compile(r"[a-z0-9]+")
+try:
+    nltk.data.find("tokenizers/punkt_tab")
+except LookupError:
+    nltk.download("punkt_tab")
 
+try:
+    nltk.data.find("corpora/stopwords")
+except LookupError:
+    nltk.download("stopwords")
 
-def _tokenize(text: str) -> List[str]:
-    """
-    Tokenitza: passa a minúscules i es queda amb paraules alfanumèriques.
-    """
+# Our tokenization function
+EN_STOP_WORDS = set(stopwords.words("english"))
+STEMMER = PorterStemmer()
+def preproces_text(text):
     if not isinstance(text, str):
         return []
-    return _token_re.findall(text.lower())
+    text = text.lower()
+    tokens = word_tokenize(text)
+    tokens = [t for t in tokens if t.isalpha()]
+    tokens = [t for t in tokens if t not in EN_STOP_WORDS]
+    tokens = [STEMMER.stem(t) for t in tokens]
+    return tokens
+
+# We apply it to all the search engine
+def _tokenize(text):
+    return preproces_text(text)
 
 
-def _doc_text(doc: Document) -> str:
+# ---------------------------------------------------------------------
+# Camps del Document i pesos per camp
+# ---------------------------------------------------------------------
+
+def _doc_fields(doc):
     """
-    Construeix el text que farem servir per indexar cada document,
-    combinant els mateixos camps que es fan servir al Part 3:
-    title, description, brand, category, sub_category, product_details, seller.
+    Retorna un diccionari camp -> text per als camps que volem indexar.
     """
-    parts: List[str] = []
+    fields = {}
 
-    for field_name in ("title", "description", "brand",
-                       "category", "sub_category", "seller"):
+    # Camps textuals simples
+    for field_name in (
+        "title",
+        "description",
+        "brand",
+        "category",
+        "sub_category",
+        "seller",
+    ):
         value = getattr(doc, field_name, None)
         if value:
-            parts.append(str(value))
+            fields[field_name] = str(value)
 
-    if doc.product_details:
-        # product_details és un dict {clau: valor}
+    # product_details: dict {clau: valor} → el considerem com un sol camp
+    if getattr(doc, "product_details", None):
+        values = []
         for v in doc.product_details.values():
             if v:
-                parts.append(str(v))
+                values.append(str(v))
+        if values:
+            fields["product_details"] = " ".join(values)
 
-    return " ".join(parts)
+    return fields
 
 
-# --- BM25 principal --------------------------------------------------
+# Wieghts for the fields
+field_weights = {
+    "title": 0.9,
+    "brand": 0.25,
+    "category": 0.25,
+    "sub_category": 0.125,
+    "description": 0.125,
+    "product_details": 0.25,
+    "seller": 0.1,
+}
 
-
-def search_in_corpus(query: str,
-                     search_id: str,
-                     corpus: Dict[str, Document],) -> List[Document]:
-    """
-    Cerca la `query` dins el `corpus` aplicant BM25.
-
-    - Construeix un índex invertit i longitud dels documents.
-    - Calcula IDF i puntuacions BM25.
-    - Retorna una llista de `Document` ordenats (no s'afegeix cap camp nou al Document).
-
-    Els `Document` retornats tenen el camp `url` apuntant a la vista interna
-    de detalls: /doc_details?pid=...&search_id=...
-    """
-
-    # 0. Casos trivials
-    if not query or not corpus:
-        return []
-
-    # 1. Indexació: terme -> {pid -> tf}, i longituds dels docs
-    index: Dict[str, Dict[str, int]] = defaultdict(dict)
-    doc_lengths: Dict[str, int] = {}
+# Function to create all the needed indexes at the start of the web
+def build_indexes(corpus):
+    # term -> pid -> [positions]
+    index = defaultdict(lambda: defaultdict(list))
+    # term -> pid -> {fields}
+    field_index = defaultdict(lambda: defaultdict(set))
+    # pid -> doc_lenght
+    doc_length = {}
 
     for pid, doc in corpus.items():
-        text = _doc_text(doc)
-        terms = _tokenize(text)
-        if not terms:
-            continue
+        fields = _doc_fields(doc)
 
-        doc_lengths[pid] = len(terms)
+        pos = 0
+        for field_name, text in fields.items():
+            terms = _tokenize(text)
+            for term in terms:
+                # Positions of the term at the doc
+                index[term][pid].append(pos)
+                # Which fields appers the term
+                field_index[term][pid].add(field_name)
+                pos += 1
+        if pos > 0:
+            doc_length[pid] = pos
+    if not doc_length:
+        return {}, {}, {}, {}, 0.0
 
-        tf_counts: Dict[str, int] = defaultdict(int)
-        for t in terms:
-            tf_counts[t] += 1
-
-        for term, tf_td in tf_counts.items():
-            index[term][pid] = tf_td
-
-    if not doc_lengths:
-        return []
-
-    N = len(doc_lengths)
-    avgdl = sum(doc_lengths.values()) / float(N)
-
-    # 2. IDF per BM25 (versió log(N/df) com al report)
-    idf: Dict[str, float] = {}
+    N = len(doc_length)
+    avgdl = sum(doc_length.values()) / float(N)
+    # IDF
+    idf = {}
     for term, postings in index.items():
         df = len(postings)
         if df > 0:
             idf[term] = math.log(N / df)
         else:
             idf[term] = 0.0
+    return index, field_index, idf, doc_length, avgdl
 
-    # 3. Processar la consulta
-    query_terms = _tokenize(query)
-    if not query_terms:
+# Our ranking algorithm
+def rank_documents_ours(terms,docs,index,field_index,idf,doc_length,avgdl,k1=1.2,b=0.75,):
+    if not docs or not doc_length:
+        return [], []
+    docs_set = set(docs)
+    doc_scores = defaultdict(float)
+    for term in terms:
+        postings_for_term = index.get(term)
+        if not postings_for_term:
+            continue
+        term_idf = idf.get(term, 0.0)
+        if term_idf == 0.0:
+            continue
+        term_field_map = field_index.get(term, {})
+        for pid in docs_set:
+            positions = postings_for_term.get(pid)
+            if not positions:
+                continue
+            tf_td = len(positions)
+            Ld = doc_length.get(pid, 0)
+            if Ld == 0:
+                continue
+            denom = k1 * ((1.0 - b) + b * (Ld / avgdl)) + tf_td
+            score = term_idf * ((k1 + 1.0) * tf_td) / denom
+            fields_for_doc = term_field_map.get(pid, set())
+            if fields_for_doc:
+                field_coeff = sum(field_weights.get(f, 0.0) for f in fields_for_doc)
+            else:
+                field_coeff = 0.0
+            score *= field_coeff
+            doc_scores[pid] += score
+
+    doc_scores_list = [[score, pid] for pid, score in doc_scores.items()]
+    doc_scores_list.sort(reverse=True, key=lambda x: x[0])
+    result_docs = [x[1] for x in doc_scores_list]
+    return result_docs, doc_scores_list
+
+# We do the search
+def search_in_corpus(query,search_id,corpus,index,field_index,idf,doc_length,avgdl,):
+    if not query or not corpus:
         return []
-
-    # Documents candidats: primer intentem intersecció (tots els termes),
-    # i si queda buida, fem servir la unió (almenys un terme).
-    candidate_docs = None  # tipus Optional[set[str]]
-
-    for term in query_terms:
+    terms = _tokenize(query)
+    if not terms:
+        return []
+    # 1) intersecció de docs que contenen tots els termes
+    candidate_docs = None
+    for term in terms:
         postings = index.get(term)
         if not postings:
             continue
@@ -172,10 +181,10 @@ def search_in_corpus(query: str,
         else:
             candidate_docs &= docs_for_term
 
+    # 2) si intersecció buida, fem unió
     if not candidate_docs:
-        # Unió de tots els documents on surti algun terme
         candidate_docs = set()
-        for term in query_terms:
+        for term in terms:
             postings = index.get(term)
             if postings:
                 candidate_docs.update(postings.keys())
@@ -183,48 +192,19 @@ def search_in_corpus(query: str,
     if not candidate_docs:
         return []
 
-    # 4. Càlcul BM25
-    k1 = 1.2
-    b = 0.75
-    doc_scores: Dict[str, float] = defaultdict(float)
+    candidate_docs_list = list(candidate_docs)
+    ranked_pids, _scores = rank_documents_ours(terms,candidate_docs_list,index,field_index,idf,doc_length,avgdl,)
 
-    for term in query_terms:
-        postings = index.get(term)
-        if not postings:
-            continue
-
-        term_idf = idf.get(term, 0.0)
-        if term_idf == 0.0:
-            continue
-
-        for pid, tf_td in postings.items():
-            if pid not in candidate_docs:
-                continue
-
-            Ld = doc_lengths[pid]
-            denom = k1 * ((1.0 - b) + b * (Ld / avgdl)) + tf_td
-            score = term_idf * ((k1 + 1.0) * tf_td) / denom
-            doc_scores[pid] += score
-
-    if not doc_scores:
+    if not ranked_pids:
         return []
 
-    # 5. Ordenar per score descendent
-    ranked = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
-    #if top_k is not None:
-    #    ranked = ranked[:top_k]
-
-    # 6. Retornar Documents (sense afegir cap atribut extra)
-    results: List[Document] = []
-
-    for pid, _score in ranked:
+    results = []
+    for pid in ranked_pids:
         orig_doc = corpus[pid]
 
-        # Fem una còpia del Document per poder canviar l'URL interna
         data = orig_doc.model_dump()
         data["url"] = f"doc_details?pid={orig_doc.pid}&search_id={search_id}"
 
         doc_copy = Document(**data)
         results.append(doc_copy)
-
     return results

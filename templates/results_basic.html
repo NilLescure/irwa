@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block content %}
+    Found <strong>{{ found_counter }}</strong> results...
+    <hr>
+    {% if rag_response %}
+        <div class="mb-4 p-3" style="border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9;">
+            <h5>AI-Generated Summary:</h5>
+            <p>{{ rag_response }}</p>
+        </div>
+    {% endif %}
+    <hr>
+    {% for item in results_list %}
+        <div class="pb-3">
+            <!-- Títol enllaçat a la pàgina de detall -->
+            <div class="doc-title">
+                <a href="{{ item.url }}">
+                    {{ item.title }}
+                </a>
+            </div>
+
+            <!-- Descripció curta -->
+            <div class="doc-desc">
+                {{ item.description }}
+            </div>
+
+            <!-- Info de preu, descompte i rating -->
+            <div class="doc-meta text-muted mt-1">
+                {% if item.selling_price is not none %}
+                    <span><strong>Price:</strong> {{ item.selling_price }} €</span>
+                {% endif %}
+                {% if item.discount %}
+                    <span> | <strong>Discount:</strong> {{ item.discount }}%</span>
+                {% endif %}
+                {% if item.average_rating %}
+                    <span> | <strong>Rating:</strong> {{ item.average_rating }} / 5</span>
+                {% endif %}
+            </div>
+
+            <!-- Enllaç (addicional) a la pàgina original del producte, si el backend el passa -->
+            {% if item.product_url %}
+                <div class="mt-1">
+                    <a href="{{ item.product_url }}" target="_blank" rel="noopener">
+                        Open product page
+                    </a>
+                </div>
+            {% endif %}
+
+        </div>
+        <hr>
+    {% endfor %}
+{% endblock %}
+
+

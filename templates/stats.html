@@ -2,6 +2,15 @@
 {% block page_title %}{{ page_title }}{% endblock %}
 
 {% block content %}
+    <!-- Navigation -->
+    <div class="mb-3">
+        <a href="/">Home</a> |
+        <a href="/stats">Stats</a>
+        {% if session.last_search_query %}
+            | <a href="{{ url_for('last_search') }}">Previous search</a>
+        {% endif %}
+    </div>
+
 <h1>{{ page_title }}</h1>
 
 <h2>1. Document Clicks & Dwell Time</h2>

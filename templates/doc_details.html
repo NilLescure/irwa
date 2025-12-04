@@ -1,77 +1,159 @@
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Document Detail - IRWA Search Engine</title>
-</head>
-<body>
-<div><a href="/" >Home</a></div>
-<div><a href="/stats" >Stats</a></div>
-<div><a href="/dashboard" >Dashboard</a></div>
-<h1>Document Detail Page</h1>
-<p>This is a placeholder for document details.</p>
-<p>Here you can display more information about the document.</p>
-<p>For example, you might show the full text of the document, metadata, or other relevant details.</p>
-<p>You can also include links to related documents or resources.</p>
-<p>Feel free to customize this page to fit the needs of your application.</p>
-</body>
-</html> -->
-
 {% extends "base.html" %}
-{% block page_title %}Document Detail{% endblock %}
+{% block page_title %}{{ doc.title }}{% endblock %}
 
 {% block content %}
+<div class="container mt-4">
+
+    <!-- Navigation -->
     <div class="mb-3">
         <a href="/">Home</a> |
         <a href="/stats">Stats</a> |
         <a href="/dashboard">Dashboard</a>
     </div>
 
-    <h1>{{ doc.title }}</h1>
-
-    <p class="mt-3">{{ doc.description }}</p>
+    <!-- Search bar on results page -->
+    <form method="POST" action="{{ url_for('search_form_post') }}" class="mb-4">
+        <div class="input-group">
+            <input
+                type="text"
+                name="search-query"
+                class="form-control"
+                placeholder="New search..."
+                value="{{ search_query or '' }}"
+                required
+            >
+            <button class="btn btn-primary" type="submit">Search</button>
+        </div>
+    </form>
 
     <hr>
 
-    <h4>Product information</h4>
-    <ul>
-        {% if doc.selling_price is not none %}
-            <li><strong>Price:</strong> {{ doc.selling_price }} €</li>
-        {% endif %}
-        {% if doc.discount %}
-            <li><strong>Discount:</strong> {{ doc.discount }} %</li>
-        {% endif %}
-        {% if doc.average_rating %}
-            <li><strong>Average rating:</strong> {{ doc.average_rating }} / 5</li>
-        {% endif %}
-        {% if doc.brand %}
-            <li><strong>Brand:</strong> {{ doc.brand }}</li>
-        {% endif %}
-        {% if doc.category %}
-            <li><strong>Category:</strong> {{ doc.category }}</li>
-        {% endif %}
-        {% if doc.sub_category %}
-            <li><strong>Sub-category:</strong> {{ doc.sub_category }}</li>
-        {% endif %}
-        {% if doc.seller %}
-            <li><strong>Seller:</strong> {{ doc.seller }}</li>
-        {% endif %}
-    </ul>
+    <!-- TRUE BACK BUTTON (returns to the exact previous search) -->
+    <a href="{{ last_search_url }}" class="btn btn-outline-secondary mb-3">
+        ← Return to previous search
+    </a>
 
-    {% if doc.product_details %}
-        <h5>Product details</h5>
-        <ul>
-            {% for key, value in doc.product_details.items() %}
-                <li><strong>{{ key }}:</strong> {{ value }}</li>
-            {% endfor %}
-        </ul>
-    {% endif %}
+    <div class="row">
 
-    {% if doc.url %}
-        <p class="mt-3">
-            <a href="{{ doc.url }}" target="_blank" rel="noopener">
-                Open original product page
-            </a>
-        </p>
-    {% endif %}
+        <!-- LEFT COLUMN: IMAGES -->
+        <div class="col-md-5">
+            {% if doc.images %}
+                <div id="productCarousel" class="carousel slide" data-bs-ride="carousel">
+                    <div class="carousel-inner">
+                        {% for img in doc.images %}
+                            <div class="carousel-item {% if loop.first %}active{% endif %}">
+                                <img src="{{ img }}" class="d-block w-100 rounded" alt="Product image">
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    {% if doc.images|length > 1 %}
+                        <button class="carousel-control-prev" type="button"
+                                data-bs-target="#productCarousel" data-bs-slide="prev">
+                            <span class="carousel-control-prev-icon"></span>
+                        </button>
+                        <button class="carousel-control-next" type="button"
+                                data-bs-target="#productCarousel" data-bs-slide="next">
+                            <span class="carousel-control-next-icon"></span>
+                        </button>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- RIGHT COLUMN: PRODUCT INFO -->
+        <div class="col-md-7">
+
+            <h1>{{ doc.title }}</h1>
+
+            <p class="text-muted">
+                {{ doc.brand }} &bullet;
+                {{ doc.category }} / {{ doc.sub_category }}
+            </p>
+
+            <!-- Rating stars -->
+            {% if doc.average_rating %}
+                {% set rating = doc.average_rating %}
+                {% set full = rating|int %}
+                {% set half = 1 if (rating - full) >= 0.5 else 0 %}
+                {% set empty = 5 - full - half %}
+
+                <div class="mb-2">
+                    {% for _ in range(full) %}
+                        <span style="color:#f4b400;">★</span>
+                    {% endfor %}
+
+                    {% if half %}
+                        <span style="color:#f4b400;">☆</span>
+                    {% endif %}
+
+                    {% for _ in range(empty) %}
+                        <span style="color:#ccc;">★</span>
+                    {% endfor %}
+
+                    <span class="ms-2">{{ rating }} / 5</span>
+                </div>
+            {% endif %}
+
+            <!-- Pricing (divided by 100) -->
+            <div class="mb-3">
+                {% if doc.selling_price %}
+                    {% set final_price = (doc.selling_price / 100) %}
+                    <h3 class="text-success fw-bold">{{ "%.2f"|format(final_price) }} €</h3>
+                {% endif %}
+
+                {% if doc.actual_price %}
+                    {% set original_price = (doc.actual_price / 100) %}
+                    <p>
+                        <span class="text-decoration-line-through text-muted">
+                            {{ "%.2f"|format(original_price) }} €
+                        </span>
+
+                        {% if doc.discount %}
+                            <span class="badge bg-danger ms-2">-{{ doc.discount }}%</span>
+                        {% endif %}
+                    </p>
+                {% endif %}
+            </div>
+
+            <!-- Stock -->
+            <p>
+                {% if doc.out_of_stock %}
+                    <span class="badge bg-secondary">Out of Stock</span>
+                {% else %}
+                    <span class="badge bg-success">In Stock</span>
+                {% endif %}
+            </p>
+
+            <hr>
+
+            <!-- Description -->
+            <h4>Description</h4>
+            <p>{{ doc.description }}</p>
+
+            <!-- Product details -->
+            {% if doc.product_details %}
+                <h4 class="mt-4">Product details</h4>
+                <table class="table table-sm table-bordered w-75">
+                    {% for key, value in doc.product_details.items() %}
+                        <tr>
+                            <th class="bg-light" style="width: 30%;">{{ key }}</th>
+                            <td>{{ value }}</td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            {% endif %}
+
+            {% if doc.seller %}
+                <p><strong>Seller:</strong> {{ doc.seller }}</p>
+            {% endif %}
+
+            {% if doc.url %}
+                <a href="{{ doc.url }}" target="_blank" class="btn btn-primary mt-3">
+                    View product on Flipkart
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block page_title %}{{ page_title }}{% endblock %}
 {% block content %}
+    <!-- Navigation -->
+    <div class="mb-3">
+        <a href="/stats">Stats</a> |
+        <a href="/dashboard">Dashboard</a>
+        {% if session.last_search_query %}
+            | <a href="{{ url_for('last_search') }}">Previous search</a>
+        {% endif %}
+    </div>
     <div class="centered">
         <p>&nbsp;</p>
         <p>&nbsp;</p>
