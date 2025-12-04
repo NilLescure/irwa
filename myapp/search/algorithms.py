@@ -41,17 +41,13 @@ def _tokenize(text):
     return preproces_text(text)
 
 
-# ---------------------------------------------------------------------
-# Camps del Document i pesos per camp
-# ---------------------------------------------------------------------
-
+# Dictionary used for our search
 def _doc_fields(doc):
     """
     Retorna un diccionari camp -> text per als camps que volem indexar.
     """
     fields = {}
 
-    # Camps textuals simples
     for field_name in (
         "title",
         "description",
@@ -64,7 +60,6 @@ def _doc_fields(doc):
         if value:
             fields[field_name] = str(value)
 
-    # product_details: dict {clau: valor} → el considerem com un sol camp
     if getattr(doc, "product_details", None):
         values = []
         for v in doc.product_details.values():
@@ -169,7 +164,8 @@ def search_in_corpus(query,search_id,corpus,index,field_index,idf,doc_length,avg
     terms = _tokenize(query)
     if not terms:
         return []
-    # 1) intersecció de docs que contenen tots els termes
+
+    # Docs that have all the terms
     candidate_docs = None
     for term in terms:
         postings = index.get(term)
@@ -181,7 +177,7 @@ def search_in_corpus(query,search_id,corpus,index,field_index,idf,doc_length,avg
         else:
             candidate_docs &= docs_for_term
 
-    # 2) si intersecció buida, fem unió
+    # If any doc have all the terms, we compute the docs that have at least on term
     if not candidate_docs:
         candidate_docs = set()
         for term in terms:

@@ -14,7 +14,6 @@
 <h1>{{ page_title }}</h1>
 
 <style>
-  /* Contenidor amb scroll i espai limitat per les taules llargues */
   .scroll-table-wrapper {
       max-height: 260px;
       overflow-y: auto;
@@ -34,7 +33,6 @@
       font-size: 0.9rem;
   }
 
-  /* Estil per a les "ruletes" amb <details> */
   details {
       margin: 8px 0 24px 0;
   }
@@ -57,7 +55,7 @@
   }
 </style>
 
-<!-- 0. Global Summary -->
+<!-- Global Summary -->
 <h2>0. Global Summary</h2>
 <div style="display:flex; flex-wrap:wrap; gap:15px; margin-bottom:25px;">
     <div style="flex:1 1 200px; background:#f0f4f8; padding:10px; border-radius:8px;">
@@ -89,7 +87,7 @@
 
 <hr>
 
-<!-- 1. Missions -->
+<!-- Missions -->
 <h2>1. Missions (Query sessions)</h2>
 {% if mission_stats.missions %}
 <table border="1" cellpadding="5">
@@ -126,7 +124,7 @@
 
 <hr>
 
-<!-- 2. Document Clicks & Dwell Time -->
+<!-- Document Clicks & Dwell Time -->
 <h2>2. Document Clicks & Dwell Time</h2>
 <table border="1" cellpadding="5">
     <tr>
@@ -157,7 +155,7 @@
 
 <hr>
 
-<!-- 3. Aggregated Queries (by text) amb ruleta + scroll -->
+<!-- Aggregated Queries (by text) amb ruleta + scroll -->
 <h2>3. Aggregated Queries (by text)</h2>
 <details>
     <summary>Show/hide aggregated queries table</summary>
@@ -192,7 +190,7 @@
 
 <hr>
 
-<!-- 4. Raw Queries Log (segueix igual, info completa sempre visible) -->
+<!-- Raw Queries Log (segueix igual, info completa sempre visible) -->
 <h2>4. Raw Queries Log</h2>
 <table border="1" cellpadding="5">
     <tr>
@@ -217,7 +215,7 @@
 
 <hr>
 
-<!-- 5. HTTP Requests -->
+<!-- HTTP Requests -->
 <h2>5. HTTP Requests</h2>
 
 <h3>5.1 Methods summary</h3>
@@ -263,7 +261,7 @@
 
 <hr>
 
-<!-- 6. Sessions -->
+<!-- Sessions -->
 <h2>6. Sessions</h2>
 <table border="1" cellpadding="5">
     <tr>

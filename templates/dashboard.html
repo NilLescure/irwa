@@ -194,7 +194,7 @@
     <h2>Analytics Charts</h2>
     <div class="chart-grid">
 
-        <!-- 1️⃣ Top Clicked Documents -->
+        <!-- Top Clicked Documents -->
         <div class="chart-card">
             <h3>Top Clicked Documents (by title)</h3>
             <div class="chart-wrapper">
@@ -202,7 +202,7 @@
             </div>
         </div>
 
-        <!-- 2️⃣ Average Dwell Time per Document -->
+        <!-- Average Dwell Time per Document -->
         <div class="chart-card">
             <h3>Average Dwell Time (seconds)</h3>
             <div class="chart-wrapper">
@@ -210,7 +210,7 @@
             </div>
         </div>
 
-        <!-- 3️⃣ Query Frequency -->
+        <!-- Query Frequency -->
         <div class="chart-card">
             <h3>Query Frequency</h3>
             <div class="chart-wrapper">
@@ -218,7 +218,7 @@
             </div>
         </div>
 
-        <!-- 4️⃣ HTTP Requests by Method -->
+        <!-- HTTP Requests by Method -->
         <div class="chart-card">
             <h3>HTTP Requests by Method</h3>
             <div class="chart-wrapper">
@@ -226,7 +226,7 @@
             </div>
         </div>
 
-        <!-- 5️⃣ Active Sessions -->
+        <!-- Active Sessions -->
         <div class="chart-card">
             <h3>Sessions Overview (# Requests per Session)</h3>
             <div class="chart-wrapper">
@@ -240,25 +240,25 @@
 <script>
 /* ---------------------- Data Preparation ---------------------- */
 
-// 1️⃣ Documents clicks (ara fem servir el TITLE)
+// Documents clicks (ara fem servir el TITLE)
 const docLabels = {{ ranked_docs | map(attribute='title') | list | safe }};
 const docClicks = {{ ranked_docs | map(attribute='clicks') | list | safe }};
 
-// 2️⃣ Average dwell time
+// Average dwell time
 const dwellTimes = {{ ranked_docs | map(attribute='avg_dwell_time') | list | safe }};
 
-// 3️⃣ Queries (freqüència per text)
+// Queries (freqüència per text)
 const queryLabels = {{ query_stats.queries | map(attribute='query') | list | safe }};
 const queryCounts = {{ query_stats.queries | map(attribute='count') | list | safe }};
 
-// 4️⃣ HTTP requests by method
+// HTTP requests by method
 const httpMethods = {{ http_stats.requests | map(attribute='method') | list | safe }};
 const httpMethodCounts = {};
 httpMethods.forEach(function(m) { httpMethodCounts[m] = (httpMethodCounts[m] || 0) + 1; });
 const httpLabels = Object.keys(httpMethodCounts);
 const httpCounts = Object.values(httpMethodCounts);
 
-// 5️⃣ Sessions
+// Sessions
 const sessionLabels = {{ http_stats.sessions.keys() | list | safe }};
 const sessionReqs = {{ http_stats.sessions.values() | map(attribute='num_requests') | list | safe }};
 
@@ -298,7 +298,7 @@ function baseBarOptions(title) {
     };
 }
 
-// 1️⃣ Top Clicked Documents
+// Top Clicked Documents
 new Chart(document.getElementById('docClicksChart').getContext('2d'), {
     type: 'bar',
     data: {
@@ -312,7 +312,7 @@ new Chart(document.getElementById('docClicksChart').getContext('2d'), {
     options: baseBarOptions('Top Clicked Documents')
 });
 
-// 2️⃣ Average Dwell Time
+// Average Dwell Time
 new Chart(document.getElementById('dwellTimeChart').getContext('2d'), {
     type: 'bar',
     data: {
@@ -326,7 +326,7 @@ new Chart(document.getElementById('dwellTimeChart').getContext('2d'), {
     options: baseBarOptions('Average Dwell Time')
 });
 
-// 3️⃣ Query Frequency
+// Query Frequency
 new Chart(document.getElementById('queryFreqChart').getContext('2d'), {
     type: 'bar',
     data: {
@@ -340,7 +340,7 @@ new Chart(document.getElementById('queryFreqChart').getContext('2d'), {
     options: baseBarOptions('Query Frequency')
 });
 
-// 4️⃣ HTTP Requests by Method
+// HTTP Requests by Method
 new Chart(document.getElementById('httpMethodChart').getContext('2d'), {
     type: 'pie',
     data: {
@@ -365,7 +365,7 @@ new Chart(document.getElementById('httpMethodChart').getContext('2d'), {
     }
 });
 
-// 5️⃣ Sessions Overview
+// Sessions Overview
 new Chart(document.getElementById('sessionChart').getContext('2d'), {
     type: 'bar',
     data: {

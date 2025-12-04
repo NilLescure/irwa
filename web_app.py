@@ -33,7 +33,6 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 # open browser dev tool to see the cookies
 app.session_cookie_name = os.getenv("SESSION_COOKIE_NAME")
-
 # instantiate our in memory persistence
 analytics_data = AnalyticsData()
 # instantiate RAG generator
@@ -47,7 +46,7 @@ corpus = load_corpus(file_path)
 # Log first element of corpus to verify it loaded correctly:
 print("\nCorpus is loaded... \n First element:")#, list(corpus.values())[0])
 
-# instantiate our search engine
+# Instantiate our search engine (creating the indexes with the corpus)
 search_engine = SearchEngine(corpus)
 
 # Home URL "/"
@@ -89,7 +88,6 @@ def search_form_post():
     # Query de la cerca
     search_query = request.form['search-query'].strip()
 
-    # Pàgina actual (ve de la paginació; per defecte 1)
     page = int(request.form.get('page', 1))
 
     # Ensure session has unique ID
@@ -101,21 +99,15 @@ def search_form_post():
     # Compute dwell time for last clicked doc
     analytics_data.compute_dwell(session_id)
 
-       # 1️ Assignem missió (la funció ja guarda la query internament)
     mission_id = analytics_data.assign_mission(session_id, search_query)
-
-    # Id simple per a la query (última afegida a fact_queries)
     query_id = len(analytics_data.fact_queries)
 
-    # Guardem a sessió la info de l'última cerca
     session['last_search_query'] = search_query
     session['last_mission_id'] = mission_id
     session['last_search_page'] = page
 
-
     # 3️ Perform search (llista completa de resultats)
     results = search_engine.search(search_query, query_id, corpus)
-
 
     # 4️ Save results ranking
     results_with_rank = [(doc.pid, idx + 1) for idx, doc in enumerate(results)]
@@ -128,105 +120,7 @@ def search_form_post():
     found_count = len(results)
     session['last_found_count'] = found_count
 
-    # --- PAGINACIÓ ---
-    total_pages = max(1, math.ceil(found_count / PER_PAGE)) if found_count else 1
-
-    if page < 1:
-        page = 1
-    elif page > total_pages:
-        page = total_pages
-
-    start_idx = (page - 1) * PER_PAGE
-    end_idx = start_idx + PER_PAGE
-    page_results = results[start_idx:end_idx]
-
-    # Pàgines visibles: 1, (page-2..page+2), última
-    pages = []
-
-    if total_pages <= 7:
-        # Si són poques, les mostrem totes
-        pages = list(range(1, total_pages + 1))
-    else:
-        pages.append(1)
-
-        start_window = max(2, page - 2)
-        end_window = min(total_pages - 1, page + 2)
-
-        pages.extend(range(start_window, end_window + 1))
-        pages.append(total_pages)
-
-        # Eliminem duplicats mantenint l'ordre
-        seen = set()
-        visible_pages = []
-        for p in pages:
-            if p not in seen:
-                visible_pages.append(p)
-                seen.add(p)
-        pages = visible_pages
-
-    return render_template(
-        'results.html',
-        results_list=page_results,
-        page_title="Results",
-        found_counter=found_count,
-        rag_response=rag_response,
-        search_query=search_query,
-        page=page,
-        total_pages=total_pages,
-        pages=pages,          # 👈 IMPORTANT: passem la llista de pàgines visibles
-    )
-
-@app.route('/last_search', methods=['GET'])
-def last_search():
-    """
-    Recarrega l'última cerca (mateixa query i mateixa pàgina)
-    fent servir les dades guardades a la sessió.
-    """
-
-    # Recuperem la query desada
-    search_query = session.get('last_search_query', '')
-    if not search_query:
-        # Si no hi ha res guardat, tornem a l'índex
-        return redirect(url_for('index'))
-
-    # Pàgina guardada (per defecte 1)
-    page = int(session.get('last_search_page', 1))
-
-    # Assegurar session_id
-    if "session_id" not in session:
-        import uuid
-        session["session_id"] = str(uuid.uuid4())
-    session_id = session["session_id"]
-
-    # Compute dwell time per l'últim doc vist
-    analytics_data.compute_dwell(session_id)
-
-    # 1️ Assignem missió (ja guarda la query)
-    mission_id = analytics_data.assign_mission(session_id, search_query)
-
-    # Id simple de la query (última guardada)
-    query_id = len(analytics_data.fact_queries)
-
-    session['last_search_query'] = search_query
-    session['last_mission_id'] = mission_id
-    session['last_search_page'] = page
-
-
-    # 3️ Tornem a fer la cerca
-    results = search_engine.search(search_query, query_id, corpus)
-
-    # 4️ Guardem el rànquing
-    results_with_rank = [(doc.pid, idx + 1) for idx, doc in enumerate(results)]
-    analytics_data.save_results(session_id, search_query, results_with_rank)
-
-    # 5️ Tornem a generar resposta RAG
-    rag_response = rag_generator.generate_response(search_query, results)
-
-    # Comptador total
-    found_count = len(results)
-    session['last_found_count'] = found_count
-
-    # --- PAGINACIÓ (mateix codi que a search_form_post) ---
+    # Pagination
     total_pages = max(1, math.ceil(found_count / PER_PAGE)) if found_count else 1
 
     if page < 1:
@@ -239,18 +133,15 @@ def last_search():
     page_results = results[start_idx:end_idx]
 
     pages = []
+
     if total_pages <= 7:
         pages = list(range(1, total_pages + 1))
     else:
         pages.append(1)
-
         start_window = max(2, page - 2)
         end_window = min(total_pages - 1, page + 2)
-
         pages.extend(range(start_window, end_window + 1))
         pages.append(total_pages)
-
-        # Eliminem duplicats mantenint l'ordre
         seen = set()
         visible_pages = []
         for p in pages:
@@ -271,6 +162,72 @@ def last_search():
         pages=pages,
     )
 
+@app.route('/last_search', methods=['GET'])
+def last_search():
+    search_query = session.get('last_search_query', '')
+    if not search_query:
+        return redirect(url_for('index'))
+
+    page = int(session.get('last_search_page', 1))
+
+    if "session_id" not in session:
+        import uuid
+        session["session_id"] = str(uuid.uuid4())
+    session_id = session["session_id"]
+    analytics_data.compute_dwell(session_id)
+    mission_id = analytics_data.assign_mission(session_id, search_query)
+    query_id = len(analytics_data.fact_queries)
+
+    session['last_search_query'] = search_query
+    session['last_mission_id'] = mission_id
+    session['last_search_page'] = page
+
+    results = search_engine.search(search_query, query_id, corpus)
+    results_with_rank = [(doc.pid, idx + 1) for idx, doc in enumerate(results)]
+    analytics_data.save_results(session_id, search_query, results_with_rank)
+    rag_response = rag_generator.generate_response(search_query, results)
+    found_count = len(results)
+    session['last_found_count'] = found_count
+
+    total_pages = max(1, math.ceil(found_count / PER_PAGE)) if found_count else 1
+    if page < 1:
+        page = 1
+    elif page > total_pages:
+        page = total_pages
+
+    start_idx = (page - 1) * PER_PAGE
+    end_idx = start_idx + PER_PAGE
+    page_results = results[start_idx:end_idx]
+
+    pages = []
+    if total_pages <= 7:
+        pages = list(range(1, total_pages + 1))
+    else:
+        pages.append(1)
+        start_window = max(2, page - 2)
+        end_window = min(total_pages - 1, page + 2)
+        pages.extend(range(start_window, end_window + 1))
+        pages.append(total_pages)
+
+        seen = set()
+        visible_pages = []
+        for p in pages:
+            if p not in seen:
+                visible_pages.append(p)
+                seen.add(p)
+        pages = visible_pages
+
+    return render_template(
+        'results.html',
+        results_list=page_results,
+        page_title="Results",
+        found_counter=found_count,
+        rag_response=rag_response,
+        search_query=search_query,
+        page=page,
+        total_pages=total_pages,
+        pages=pages,
+    )
 
     
 @app.route('/doc_details', methods=['GET'])
@@ -289,7 +246,7 @@ def doc_details():
     clicked_doc_id = request.args["pid"]
     query_text = session.get("last_search_query", None)
 
-    # 1️⃣ Register click + start dwell tracking
+    # Register click + start dwell tracking
     analytics_data.save_doc_click(
         session_id,
         clicked_doc_id,
@@ -297,7 +254,7 @@ def doc_details():
         corpus[clicked_doc_id].description
     )
 
-    # 2️⃣ Get the document
+    # Get the document
     doc = corpus[clicked_doc_id]
 
     return render_template(
@@ -318,7 +275,7 @@ def stats():
     if session_id:
         analytics_data.compute_dwell(session_id)
 
-    # --- Dades base ---
+    # Data
     document_stats = analytics_data.get_document_stats()
     query_stats = analytics_data.get_query_stats()
     raw_queries = analytics_data.fact_queries
@@ -326,7 +283,7 @@ def stats():
     sessions = analytics_data.fact_sessions
     dwell_events = analytics_data.fact_dwell
 
-    # --- Summary global ---
+    # Summary global
     total_clicks = sum(d["clicks"] for d in document_stats)
     total_docs_clicked = len(document_stats)
 
@@ -354,7 +311,7 @@ def stats():
         "total_requests": total_requests,
     }
 
-    # --- Missions (derivades de les queries) ---
+    # Missions
     missions = {}
     for q in raw_queries:
         mission_id = q.get("mission_id")
@@ -421,10 +378,9 @@ def dashboard():
     session_id = session["session_id"]
     analytics_data.compute_dwell(session_id)
 
-    # Document stats (clicks, dwell, etc.)
+    # Document stats
     ranked_docs = analytics_data.get_document_stats()
 
-    # Afegim el title de cada document (a partir del corpus)
     enhanced_docs = []
     for d in ranked_docs:
         doc_id = d["doc_id"]
@@ -440,7 +396,7 @@ def dashboard():
     http_requests = analytics_data.fact_http or []
     sessions = analytics_data.fact_sessions or {}
 
-    # Sessió actual (ubicació + missions)
+    # Actual session
     current_session = sessions.get(session_id, {
         "city": "Unknown",
         "country": "Unknown",
@@ -453,7 +409,7 @@ def dashboard():
     return render_template(
         "dashboard.html",
         page_title="Analytics Dashboard",
-        ranked_docs=enhanced_docs,  # 👈 ara porta 'title'
+        ranked_docs=enhanced_docs,
         query_stats=query_stats,
         http_stats={
             "requests": analytics_data.fact_http,
@@ -462,7 +418,6 @@ def dashboard():
         },
         current_session=current_session,
     )
-
 
 
 
